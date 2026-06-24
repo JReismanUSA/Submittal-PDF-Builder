@@ -555,6 +555,7 @@ let headers = [];
 let msalInstance = null;
 let accessToken = null;
 let dragSrcIdx = null;
+let dropOccurred = false;
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 function toggleAuthPanel() {
@@ -823,12 +824,16 @@ function dragDrop(e, idx) {
   if (dragSrcIdx === null || dragSrcIdx === idx) return;
   const moved = queue.splice(dragSrcIdx, 1)[0];
   queue.splice(idx, 0, moved);
-  // Don't call renderQueue() here — let dragEnd handle it so the
-  // browser drag lifecycle completes cleanly before we rebuild the DOM
+  dropOccurred = true;
 }
 function dragEnd() {
   dragSrcIdx = null;
-  renderQueue(); // rebuild DOM fresh with updated order, no stale classes
+  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('dragging','drag-over-top','drag-over-bottom'));
+  if (dropOccurred) {
+    dropOccurred = false;
+    // Small timeout lets the browser fully finish the drag animation before rebuilding DOM
+    setTimeout(renderQueue, 0);
+  }
 }
 
 // ── Cover page settings ──────────────────────────────────────────────────────
