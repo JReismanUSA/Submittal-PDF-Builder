@@ -820,18 +820,15 @@ function dragOver(e, idx) {
 }
 function dragDrop(e, idx) {
   e.preventDefault();
-  if (dragSrcIdx === null || dragSrcIdx === idx) { dragSrcIdx = null; return; }
+  if (dragSrcIdx === null || dragSrcIdx === idx) return;
   const moved = queue.splice(dragSrcIdx, 1)[0];
   queue.splice(idx, 0, moved);
-  dragSrcIdx = null; // reset before re-render so dragEnd has nothing stale to clean up
-  renderQueue();
+  // Don't call renderQueue() here — let dragEnd handle it so the
+  // browser drag lifecycle completes cleanly before we rebuild the DOM
 }
 function dragEnd() {
-  // Only runs cleanup if dragDrop didn't already re-render (e.g. drag cancelled)
-  if (dragSrcIdx !== null) {
-    dragSrcIdx = null;
-    document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('dragging','drag-over-top','drag-over-bottom'));
-  }
+  dragSrcIdx = null;
+  renderQueue(); // rebuild DOM fresh with updated order, no stale classes
 }
 
 // ── Cover page settings ──────────────────────────────────────────────────────
