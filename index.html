@@ -340,7 +340,7 @@
     </svg>
     Parts PDF Builder
   </a>
-  <div id="authPill" class="auth-pill" onclick="toggleAuthPanel()">
+  <div id="authPill" class="auth-pill" onclick="handleAuthPill()">
     <span class="dot" id="authDot"></span>
     <span id="authLabel">Sign in to Microsoft 365</span>
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -352,29 +352,10 @@
   <!-- ── SIDEBAR ── -->
   <aside class="sidebar">
 
-    <!-- Auth panel (hidden by default) -->
-    <div class="card" id="authPanel" style="display:none">
-      <div class="card-title">
-        <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5.5" height="5.5" rx="1" fill="currentColor"/><rect x="8.5" y="2" width="5.5" height="5.5" rx="1" fill="currentColor"/><rect x="2" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/></svg>
-        Microsoft 365
-      </div>
-      <div class="field-group">
-        <label class="field-label">Azure App Client ID</label>
-        <input type="text" id="clientIdInput" value="7f62061e-9ceb-4a8e-a215-1c9379f74147" />
-        <p class="field-hint">From Azure portal → App registrations. <a href="https://portal.azure.com" target="_blank">Open Azure ↗</a></p>
-      </div>
-      <button class="btn btn-primary btn-full" id="signInBtn" onclick="handleSignIn()">Sign in with Microsoft</button>
-      <button class="btn btn-ghost btn-full" id="signOutBtn" style="display:none; margin-top:6px;" onclick="handleSignOut()">Sign out</button>
-      <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
-        <div style="font-size: 12px; color: var(--text-3); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Setup guide</div>
-        <div class="setup-steps">
-          <div class="setup-step"><span class="setup-num">1</span><span>Go to Azure portal → <strong>App registrations</strong> → New registration</span></div>
-          <div class="setup-step"><span class="setup-num">2</span><span>Set redirect URI type to <strong>Single-page application</strong>, URI = this page's URL</span></div>
-          <div class="setup-step"><span class="setup-num">3</span><span>Add permissions: <strong>Files.Read</strong> and <strong>Sites.Read.All</strong> (Microsoft Graph, delegated)</span></div>
-          <div class="setup-step"><span class="setup-num">4</span><span>Copy the <strong>Application (client) ID</strong> and paste above</span></div>
-        </div>
-      </div>
-    </div>
+    <!-- Auth panel removed — sign in via header pill button -->
+    <!-- signInBtn and signOutBtn kept as hidden elements for JS compatibility -->
+    <button id="signInBtn" style="display:none" onclick="handleSignIn()"></button>
+    <button id="signOutBtn" style="display:none" onclick="handleSignOut()"></button>
 
     <!-- Step 1: Excel upload -->
     <div class="card">
@@ -431,15 +412,15 @@
       <div class="cover-fields" id="coverFields">
         <div class="field-group">
           <label class="field-label">Title</label>
-          <input type="text" id="coverTitle" value="Parts Document Package" />
+          <input type="text" id="coverTitle" value="Product Datasheet Package" />
         </div>
         <div class="field-group">
           <label class="field-label">Prepared by</label>
-          <input type="text" id="coverPrepBy" placeholder="Your name or team" />
+          <input type="text" id="coverPrepBy" placeholder="Signed-in user" />
         </div>
         <div class="field-group">
           <label class="field-label">Company / project</label>
-          <input type="text" id="coverCompany" placeholder="ACME Corp — Project X" />
+          <input type="text" id="coverCompany" value="Utilicom Supply Associates" />
         </div>
         <div class="field-group">
           <label class="field-label">Notes</label>
@@ -456,7 +437,7 @@
       </div>
       <div class="field-group">
         <label class="field-label">Filename</label>
-        <input type="text" id="outputName" value="compiled-parts.pdf" />
+        <input type="text" id="outputName" />
       </div>
     </div>
 
@@ -547,6 +528,14 @@
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
+// Set default output filename to Submittal_{datetime} on load
+(function setDefaultFilename() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const dt = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const el = document.getElementById('outputName');
+  if (el) el.value = `Submittal_${dt}.pdf`;
+})();
 let allParts = [];
 let visibleParts = [];
 let selectedPartNums = new Set();
@@ -554,13 +543,19 @@ let queue = []; // [{partNum, docPath, desc, ext}]
 let headers = [];
 let msalInstance = null;
 let accessToken = null;
+let currentUserName = '';
 let dragSrcIdx = null;
 let dropOccurred = false;
 
 // ── Auth ───────────────────────────────────────────────────────────────────
-function toggleAuthPanel() {
-  const p = document.getElementById('authPanel');
-  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+function toggleAuthPanel() { /* legacy — no-op */ }
+function handleAuthPill() {
+  if (accessToken) {
+    // Already signed in — offer sign out via confirm
+    if (confirm('Sign out of Microsoft 365?')) handleSignOut();
+  } else {
+    handleSignIn();
+  }
 }
 
 const MSAL_CONFIG = {
@@ -605,8 +600,12 @@ async function handleSignIn() {
       resp = await msalInstance.loginPopup({ scopes: MSAL_CONFIG.scopes });
     }
     accessToken = resp.accessToken;
-    updateAuthUI(resp.account.name || resp.account.username, true);
+    currentUserName = resp.account.name || resp.account.username || '';
+    updateAuthUI(currentUserName, true);
     document.getElementById('authPanel').style.display = 'none';
+    // Pre-fill cover page prepared-by with signed-in user's display name
+    const prepByField = document.getElementById('coverPrepBy');
+    if (prepByField && !prepByField.value) prepByField.value = currentUserName;
   } catch (e) {
     showStatus('Sign-in failed: ' + e.message, 'error');
     document.getElementById('signInBtn').disabled = false;
@@ -887,52 +886,20 @@ async function fetchFromGraph(path) {
   return new Uint8Array(await resp.arrayBuffer());
 }
 
-// ── Word → PDF (HTML bridge via Mammoth + pdf-lib) ──────────────────────────
-async function wordToPdfPages(bytes, pdfDoc) {
-  return new Promise(async (resolve) => {
-    try {
-      const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
-      const html = result.value;
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;';
-      document.body.appendChild(iframe);
-      iframe.contentDocument.open();
-      iframe.contentDocument.write(`<!DOCTYPE html><html><head><style>
-        body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.5;padding:60px;margin:0;width:674px;}
-        h1{font-size:18pt;}h2{font-size:14pt;}h3{font-size:12pt;}
-        table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:4px 8px;}
-      </style></head><body>${html}</body></html>`);
-      iframe.contentDocument.close();
-      setTimeout(async () => {
-        try {
-          // Use canvas to rasterize pages
-          const iframeDoc = iframe.contentDocument;
-          const totalH = iframeDoc.body.scrollHeight;
-          const pageH = 1056; const pageW = 816;
-          const pages = Math.max(1, Math.ceil(totalH / pageH));
-          for (let pg = 0; pg < pages; pg++) {
-            const canvas = document.createElement('canvas');
-            canvas.width = pageW * 2; canvas.height = pageH * 2;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.scale(2, 2);
-            ctx.font = '11px Arial'; ctx.fillStyle = '#333';
-            ctx.fillText(`[Word document — page ${pg+1} of ${pages}]`, 40, 50);
-            ctx.fillText('Note: Install a server-side converter for full Word rendering fidelity.', 40, 75);
-            const pngBytes = canvas.toDataURL('image/png').split(',')[1];
-            const imgBytes = Uint8Array.from(atob(pngBytes), c => c.charCodeAt(0));
-            const img = await pdfDoc.embedPng(imgBytes);
-            const page = pdfDoc.addPage([pageW, pageH]);
-            page.drawImage(img, { x: 0, y: 0, width: pageW, height: pageH });
-          }
-        } catch (ex) { /* best-effort */ }
-        document.body.removeChild(iframe);
-        resolve();
-      }, 600);
-    } catch (ex) {
-      resolve(); // skip on failure
-    }
-  });
+// ── Word → PDF via Microsoft Graph convert endpoint ─────────────────────────
+// Asks Microsoft's servers to do the conversion — perfect fidelity, handles
+// both .doc and .docx, no browser-side rendering limitations.
+async function fetchWordAsPdf(docPath) {
+  let endpoint;
+  if (docPath.startsWith('https://')) {
+    const encoded = btoa(docPath).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+    endpoint = `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/content?format=pdf`;
+  } else {
+    endpoint = `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(docPath)}:/content?format=pdf`;
+  }
+  const resp = await fetch(endpoint, { headers: { Authorization: 'Bearer ' + accessToken } });
+  if (!resp.ok) throw new Error(`Graph convert ${resp.status}: ${docPath.split('/').pop()}`);
+  return new Uint8Array(await resp.arrayBuffer());
 }
 
 // ── Cover page builder ───────────────────────────────────────────────────────
@@ -949,7 +916,7 @@ async function buildCoverPage(pdfDoc) {
   page.drawRectangle({ x: 0, y: 692, width: 612, height: 100, color: rgb(0.094, 0.373, 0.647) });
 
   // White title text
-  page.drawText('PARTS DOCUMENT PACKAGE', {
+  page.drawText('PRODUCT DATASHEET PACKAGE', {
     x: 48, y: 760, size: 9,
     color: rgb(0.9, 0.95, 0.98),
   });
@@ -1053,8 +1020,12 @@ async function generatePDF() {
         pages.forEach(p => merged.addPage(p));
         log(`Merged PDF: ${item.partNum} (${src.getPageCount()} page${src.getPageCount()>1?'s':''})`, 'ok');
       } else if (['doc','docx'].includes(ext)) {
-        await wordToPdfPages(bytes, merged);
-        log(`Converted DOCX: ${item.partNum}`, 'ok');
+        // Use Graph API to convert Word → PDF server-side (full fidelity)
+        const pdfBytes = await fetchWordAsPdf(item.docPath);
+        const src = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+        const pages = await merged.copyPages(src, src.getPageIndices());
+        pages.forEach(p => merged.addPage(p));
+        log(`Converted ${ext.toUpperCase()}: ${item.partNum} (${src.getPageCount()} page${src.getPageCount()>1?'s':''})`, 'ok');
       } else if (['xls','xlsx'].includes(ext)) {
         await excelToPage(bytes, item, merged);
         log(`Converted XLSX: ${item.partNum}`, 'ok');
@@ -1104,11 +1075,53 @@ async function makeDemoPage(item, pdfDoc) {
 }
 
 async function imageToPage(bytes, ext, item, pdfDoc) {
-  const page = pdfDoc.addPage([612, 792]);
-  const img = (ext === 'png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
-  const scale = Math.min(612 / img.width, 792 / img.height, 1);
-  const w = img.width * scale; const h = img.height * scale;
-  page.drawImage(img, { x: (612 - w) / 2, y: (792 - h) / 2, width: w, height: h });
+  // Normalise all image types through a canvas — this handles:
+  // • Progressive JPEGs (re-encodes as baseline)
+  // • CMYK JPEGs (browser decodes to RGB)
+  // • PNG transparency (white background composite)
+  // • EXIF rotation (browser applies orientation automatically)
+  // • Oversized images (downsampled to max 2400px to keep PDF size sane)
+  const MAX_DIM = 2400;
+  const blob = new Blob([bytes]);
+  const bitmapUrl = URL.createObjectURL(blob);
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = bitmapUrl;
+  });
+  URL.revokeObjectURL(bitmapUrl);
+
+  let w = img.naturalWidth, h = img.naturalHeight;
+  if (w > MAX_DIM || h > MAX_DIM) {
+    const s = Math.min(MAX_DIM / w, MAX_DIM / h);
+    w = Math.round(w * s); h = Math.round(h * s);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; // white background for transparent PNGs
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  const base64 = dataUrl.split(',')[1];
+  const jpegBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  const embedded = await pdfDoc.embedJpg(jpegBytes);
+
+  // Fit image to letter page with margins
+  const PAGE_W = 612, PAGE_H = 792, MARGIN = 36;
+  const maxW = PAGE_W - MARGIN * 2, maxH = PAGE_H - MARGIN * 2;
+  const scale = Math.min(maxW / embedded.width, maxH / embedded.height, 1);
+  const drawW = embedded.width * scale, drawH = embedded.height * scale;
+
+  const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+  page.drawImage(embedded, {
+    x: (PAGE_W - drawW) / 2,
+    y: (PAGE_H - drawH) / 2,
+    width: drawW, height: drawH
+  });
 }
 
 async function excelToPage(bytes, item, pdfDoc) {
