@@ -591,10 +591,17 @@ async function handleSignIn() {
     await initMsal();
     let resp;
     try {
-      // Attempt silent SSO using the existing browser session — no popup needed
-      resp = await msalInstance.ssoSilent({ scopes: MSAL_CONFIG.scopes });
-    } catch (ssoErr) {
-      // No active session found — fall back to login popup
+      // Try to get token silently from cache first (no iframe, no popup)
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        const silentReq = { scopes: MSAL_CONFIG.scopes, account: accounts[0] };
+        const silentResp = await msalInstance.acquireTokenSilent(silentReq);
+        resp = silentResp;
+      } else {
+        throw new Error('No cached account');
+      }
+    } catch (silentErr) {
+      // No cached session — fall back to login popup
       resp = await msalInstance.loginPopup({ scopes: MSAL_CONFIG.scopes });
     }
     accessToken = resp.accessToken;
@@ -786,7 +793,7 @@ function renderQueue() {
     el.appendChild(empty);
     return;
   }
-  if (empty.parentNode) empty.parentNode.removeChild(empty);
+  if (empty && empty.parentNode) empty.parentNode.removeChild(empty);
 
   el.innerHTML = queue.map((item, i) => {
     const cls = extBadge(item.ext);
