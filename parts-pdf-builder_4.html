@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Parts PDF Builder</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F7F6F3;
+    --surface: #FFFFFF;
+    --surface2: #F0EFeb;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.18);
+    --text: #1A1917;
+    --text-2: #5A584F;
+    --text-3: #9A9890;
+    --blue: #185FA5;
+    --blue-light: #E6F1FB;
+    --blue-mid: #B5D4F4;
+    --green: #3B6D11;
+    --green-light: #EAF3DE;
+    --amber: #854F0B;
+    --amber-light: #FAEEDA;
+    --red: #A32D2D;
+    --red-light: #FCEBEB;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #19181A;
+      --surface: #242327;
+      --surface2: #2E2D31;
+      --border: rgba(255,255,255,0.09);
+      --border-strong: rgba(255,255,255,0.16);
+      --text: #EDECEA;
+      --text-2: #A09E98;
+      --text-3: #686663;
+      --blue: #85B7EB;
+      --blue-light: #042C53;
+      --blue-mid: #0C447C;
+      --green: #97C459;
+      --green-light: #173404;
+      --amber: #FAC775;
+      --amber-light: #412402;
+      --red: #F09595;
+      --red-light: #501313;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg);
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .app-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .app-header .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 600; color: var(--text);
+    text-decoration: none;
+  }
+  .app-header .logo svg { width: 28px; height: 28px; }
+  .auth-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-2);
+    transition: background 0.15s;
+  }
+  .auth-pill:hover { background: var(--border); }
+  .auth-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); }
+  .auth-pill .dot.on { background: var(--green); }
+  .auth-pill span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .layout { display: grid; grid-template-columns: 340px 1fr; min-height: calc(100vh - 56px); }
+
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    overflow-y: auto;
+    height: calc(100vh - 56px);
+    position: sticky;
+    top: 56px;
+  }
+
+  .main { padding: 1.75rem 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-3);
+    margin-bottom: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .card-title svg { width: 14px; height: 14px; opacity: 0.7; }
+
+  /* ── Form elements ── */
+  label.field-label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+  input[type="text"], input[type="password"], select, textarea {
+    width: 100%; padding: 8px 10px;
+    font-size: 14px; font-family: inherit;
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    outline: none; transition: border 0.15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+  .field-hint { font-size: 11px; color: var(--text-3); margin-top: 3px; line-height: 1.4; }
+  .field-group { display: flex; flex-direction: column; gap: 0; margin-bottom: 10px; }
+  .field-group:last-child { margin-bottom: 0; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 8px 16px; font-size: 14px; font-family: inherit; font-weight: 500;
+    border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--text-2); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+  .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-danger { background: transparent; color: var(--red); border-color: currentColor; }
+  .btn-danger:hover { background: var(--red-light); }
+  .btn-full { width: 100%; }
+  .btn-sm { padding: 5px 11px; font-size: 13px; }
+
+  /* ── Upload zone ── */
+  .upload-zone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius);
+    padding: 1.75rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--text-3);
+  }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
+  .upload-zone.loaded { border-color: var(--green); background: var(--green-light); color: var(--green); }
+  .upload-zone svg { width: 32px; height: 32px; margin-bottom: 8px; opacity: 0.6; }
+  .upload-zone .uz-title { font-size: 14px; font-weight: 500; margin-bottom: 3px; }
+  .upload-zone .uz-sub { font-size: 12px; opacity: 0.75; }
+
+  /* ── Column mapper ── */
+  .col-map { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+
+  /* ── Search bar ── */
+  .search-wrap { position: relative; }
+  .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
+  .search-wrap input { padding-left: 32px; }
+
+  /* ── Parts list ── */
+  .parts-list {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    max-height: 340px;
+    overflow-y: auto;
+  }
+  .part-row {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.1s;
+    font-size: 14px;
+  }
+  .part-row:last-child { border-bottom: none; }
+  .part-row:hover { background: var(--surface2); }
+  .part-row.selected { background: var(--blue-light); }
+  .part-row input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--blue); }
+  .part-info { min-width: 0; }
+  .part-num { font-weight: 600; font-size: 13px; }
+  .part-desc { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .part-badge {
+    font-size: 11px; padding: 2px 7px; border-radius: 99px; white-space: nowrap;
+    background: var(--surface2); color: var(--text-3); border: 1px solid var(--border);
+  }
+  .part-badge.pdf { background: var(--red-light); color: var(--red); border-color: transparent; }
+  .part-badge.docx { background: var(--blue-light); color: var(--blue); border-color: transparent; }
+  .part-badge.xlsx { background: var(--green-light); color: var(--green); border-color: transparent; }
+  .part-badge.img { background: var(--amber-light); color: var(--amber); border-color: transparent; }
+  .empty-state { padding: 2.5rem 1rem; text-align: center; color: var(--text-3); font-size: 13px; }
+  .empty-state svg { width: 32px; height: 32px; margin: 0 auto 10px; display: block; opacity: 0.35; }
+
+  /* ── Selection summary ── */
+  .sel-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    font-size: 13px; color: var(--text-2);
+  }
+  .sel-bar strong { color: var(--text); }
+  .sel-bar-actions { display: flex; gap: 6px; }
+
+  /* ── Drag-to-reorder queue ── */
+  .queue-list { display: flex; flex-direction: column; gap: 6px; }
+  .queue-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    cursor: grab;
+    user-select: none;
+    transition: box-shadow 0.15s, opacity 0.15s;
+  }
+  .queue-item:active { cursor: grabbing; }
+  .queue-item.dragging { opacity: 0.45; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .queue-item.drag-over-top { border-top: 2px solid var(--blue); }
+  .queue-item.drag-over-bottom { border-bottom: 2px solid var(--blue); }
+  .queue-idx { font-size: 11px; color: var(--text-3); min-width: 18px; text-align: right; }
+  .queue-name { flex: 1; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .queue-ext { font-size: 11px; padding: 1px 6px; border-radius: 99px; }
+  .drag-handle { color: var(--text-3); display: flex; cursor: grab; }
+  .drag-handle svg { width: 14px; height: 14px; }
+  .remove-btn { background: none; border: none; color: var(--text-3); cursor: pointer; padding: 2px; display: flex; border-radius: 4px; }
+  .remove-btn:hover { color: var(--red); background: var(--red-light); }
+  .remove-btn svg { width: 14px; height: 14px; }
+
+  /* ── Cover page settings ── */
+  .cover-toggle { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .toggle-switch { position: relative; width: 36px; height: 20px; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--border-strong); border-radius: 99px; cursor: pointer; transition: background 0.2s;
+  }
+  .toggle-slider:before {
+    content: ''; position: absolute;
+    width: 14px; height: 14px; border-radius: 50%; background: white;
+    top: 3px; left: 3px; transition: transform 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--blue); }
+  .toggle-switch input:checked + .toggle-slider:before { transform: translateX(16px); }
+  .cover-fields { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── Progress & output ── */
+  .progress-track { height: 5px; background: var(--surface2); border-radius: 99px; overflow: hidden; margin: 10px 0 6px; }
+  .progress-fill { height: 100%; background: var(--blue); border-radius: 99px; width: 0%; transition: width 0.35s cubic-bezier(.4,0,.2,1); }
+  .progress-label { font-size: 12px; color: var(--text-2); }
+
+  .status-banner {
+    display: none; padding: 10px 14px; border-radius: var(--radius-sm);
+    font-size: 13px; line-height: 1.5;
+  }
+  .status-banner.info { background: var(--blue-light); color: var(--blue); }
+  .status-banner.success { background: var(--green-light); color: var(--green); }
+  .status-banner.error { background: var(--red-light); color: var(--red); }
+  .status-banner.warn { background: var(--amber-light); color: var(--amber); }
+
+  /* ── Log ── */
+  .log-wrap {
+    max-height: 140px; overflow-y: auto;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.7;
+    display: none;
+  }
+  .log-entry { display: flex; gap: 10px; }
+  .log-time { color: var(--text-3); flex-shrink: 0; }
+  .log-ok { color: var(--green); }
+  .log-err { color: var(--red); }
+  .log-info { color: var(--blue); }
+
+  /* ── Setup guide ── */
+  .setup-steps { display: flex; flex-direction: column; gap: 8px; }
+  .setup-step { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+  .setup-num { width: 20px; height: 20px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; margin-top: 1px; }
+  a { color: var(--blue); }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { height: auto; position: static; border-right: none; border-bottom: 1px solid var(--border); }
+    .main { padding: 1.25rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <a class="logo" href="#">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="28" height="28" rx="7" fill="#185FA5"/>
+      <path d="M8 20V10l4 3 3-5 3 5 4-3v10H8z" fill="none" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M8 20h12" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    Parts PDF Builder
+  </a>
+  <div id="authPill" class="auth-pill" onclick="toggleAuthPanel()">
+    <span class="dot" id="authDot"></span>
+    <span id="authLabel">Sign in to Microsoft 365</span>
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+
+    <!-- Auth panel (hidden by default) -->
+    <div class="card" id="authPanel" style="display:none">
+      <div class="card-title">
+        <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5.5" height="5.5" rx="1" fill="currentColor"/><rect x="8.5" y="2" width="5.5" height="5.5" rx="1" fill="currentColor"/><rect x="2" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/></svg>
+        Microsoft 365
+      </div>
+      <div class="field-group">
+        <label class="field-label">Azure App Client ID</label>
+        <input type="text" id="clientIdInput" value="7f62061e-9ceb-4a8e-a215-1c9379f74147" />
+        <p class="field-hint">From Azure portal → App registrations. <a href="https://portal.azure.com" target="_blank">Open Azure ↗</a></p>
+      </div>
+      <button class="btn btn-primary btn-full" id="signInBtn" onclick="handleSignIn()">Sign in with Microsoft</button>
+      <button class="btn btn-ghost btn-full" id="signOutBtn" style="display:none; margin-top:6px;" onclick="handleSignOut()">Sign out</button>
+      <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
+        <div style="font-size: 12px; color: var(--text-3); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Setup guide</div>
+        <div class="setup-steps">
+          <div class="setup-step"><span class="setup-num">1</span><span>Go to Azure portal → <strong>App registrations</strong> → New registration</span></div>
+          <div class="setup-step"><span class="setup-num">2</span><span>Set redirect URI type to <strong>Single-page application</strong>, URI = this page's URL</span></div>
+          <div class="setup-step"><span class="setup-num">3</span><span>Add permissions: <strong>Files.Read</strong> and <strong>Sites.Read.All</strong> (Microsoft Graph, delegated)</span></div>
+          <div class="setup-step"><span class="setup-num">4</span><span>Copy the <strong>Application (client) ID</strong> and paste above</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 1: Excel upload -->
+    <div class="card">
+      <div class="card-title">
+        <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 5h6M5 8h6M5 11h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Parts index
+      </div>
+      <div id="uploadZone" class="upload-zone"
+        onclick="document.getElementById('fileInput').click()"
+        ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M28 20v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M16 4v16M10 10l6-6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="uz-title">Upload parts index</div>
+        <div class="uz-sub">Drop .xlsx, .xls, or .csv here</div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(event)" />
+
+      <div id="colMapSection" style="display:none; margin-top: 12px;">
+        <div style="font-size: 12px; color: var(--text-2); margin-bottom: 8px; font-weight: 500;">Map columns from your sheet:</div>
+        <div class="col-map">
+          <div class="field-group">
+            <label class="field-label">Part number</label>
+            <select id="partNumCol"></select>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Document path / URL</label>
+            <select id="docPathCol"></select>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Description (optional)</label>
+            <select id="descCol"><option value="">— none —</option></select>
+          </div>
+          <div class="field-group" style="justify-content: flex-end;">
+            <button class="btn btn-primary" onclick="loadParts()">Apply mapping</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cover page settings -->
+    <div class="card">
+      <div class="cover-toggle">
+        <div class="card-title" style="margin-bottom:0">
+          <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 5h6M5 8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5 11h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          Cover page
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="coverToggle" checked onchange="toggleCoverFields()" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="cover-fields" id="coverFields">
+        <div class="field-group">
+          <label class="field-label">Title</label>
+          <input type="text" id="coverTitle" value="Parts Document Package" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">Prepared by</label>
+          <input type="text" id="coverPrepBy" placeholder="Your name or team" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">Company / project</label>
+          <input type="text" id="coverCompany" placeholder="ACME Corp — Project X" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">Notes</label>
+          <textarea id="coverNotes" rows="2" placeholder="Optional notes for the cover page..." style="resize:vertical;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output settings -->
+    <div class="card">
+      <div class="card-title">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v9M5 8l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 13h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Output
+      </div>
+      <div class="field-group">
+        <label class="field-label">Filename</label>
+        <input type="text" id="outputName" value="compiled-parts.pdf" />
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main class="main">
+
+    <!-- Search & select -->
+    <div class="card">
+      <div class="card-title">
+        <svg viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Search &amp; select parts
+      </div>
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <div class="search-wrap" style="flex:1">
+          <svg viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <input type="text" id="searchInput" placeholder="Search part numbers or descriptions…" oninput="filterParts()" />
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="selectAll()">Select all</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Clear</button>
+      </div>
+
+      <div class="parts-list" id="partsList">
+        <div class="empty-state">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M28 20v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M16 4v16M10 10l6-6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Upload a parts index to get started
+        </div>
+      </div>
+
+      <div id="selBar" class="sel-bar" style="display:none; margin-top: 10px;">
+        <span><strong id="selCount">0</strong> parts selected</span>
+        <div class="sel-bar-actions">
+          <button class="btn btn-ghost btn-sm" onclick="addSelectionToQueue()">Add to queue →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document queue -->
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 0.9rem;">
+        <div class="card-title" style="margin-bottom:0">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          Document queue <span id="queueCount" style="font-weight:400; color: var(--text-3); font-size:11px; text-transform:none; letter-spacing:0;">(drag to reorder)</span>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="clearQueue()" id="clearQueueBtn" style="display:none">Clear queue</button>
+      </div>
+
+      <div id="queueList" class="queue-list">
+        <div class="empty-state" id="queueEmpty">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M8 8h16v20H8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 4h8v4H12z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 14h8M12 18h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Select parts above and click "Add to queue"
+        </div>
+      </div>
+    </div>
+
+    <!-- Generate -->
+    <div class="card">
+      <div class="card-title">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M4 2h6l4 4v9a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 2v5h5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 11l2 2 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Compile PDF
+      </div>
+
+      <div id="progressSection" style="display:none; margin-bottom: 12px;">
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-label" id="progressLabel">Preparing…</div>
+      </div>
+
+      <div class="status-banner" id="statusBanner"></div>
+      <div class="log-wrap" id="logWrap"></div>
+
+      <button class="btn btn-primary btn-full" style="margin-top: 12px; padding: 11px;" onclick="generatePDF()" id="generateBtn">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 2h6l4 4v9a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.4"/><path d="M6 10l2 2 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Fetch files &amp; compile PDF
+      </button>
+      <p style="font-size: 11px; color: var(--text-3); text-align: center; margin-top: 8px; line-height: 1.5;">
+        Files are fetched from SharePoint/OneDrive via Microsoft Graph. All merging happens in your browser — nothing leaves your machine.
+      </p>
+    </div>
+
+  </main>
+</div>
+
+<!-- External libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let allParts = [];
+let visibleParts = [];
+let selectedPartNums = new Set();
+let queue = []; // [{partNum, docPath, desc, ext}]
+let headers = [];
+let msalInstance = null;
+let accessToken = null;
+let dragSrcIdx = null;
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+function toggleAuthPanel() {
+  const p = document.getElementById('authPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+
+const MSAL_CONFIG = {
+  clientId: '7f62061e-9ceb-4a8e-a215-1c9379f74147',
+  authority: 'https://login.microsoftonline.com/32509ad0-d39b-4a9a-9297-28c93347945b',
+  scopes: ['Files.Read', 'Sites.Read.All']
+};
+
+async function initMsal() {
+  if (msalInstance) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.26.1/lib/msal-browser.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  msalInstance = new msal.PublicClientApplication({
+    auth: { clientId: MSAL_CONFIG.clientId, redirectUri: window.location.href, authority: MSAL_CONFIG.authority },
+    cache: { cacheLocation: 'sessionStorage' }
+  });
+  await msalInstance.initialize();
+}
+
+async function handleSignIn() {
+  document.getElementById('signInBtn').disabled = true;
+  document.getElementById('signInBtn').textContent = 'Signing in…';
+  try {
+    await initMsal();
+    let resp;
+    try {
+      // Attempt silent SSO using the existing browser session — no popup needed
+      resp = await msalInstance.ssoSilent({ scopes: MSAL_CONFIG.scopes });
+    } catch (ssoErr) {
+      // No active session found — fall back to login popup
+      resp = await msalInstance.loginPopup({ scopes: MSAL_CONFIG.scopes });
+    }
+    accessToken = resp.accessToken;
+    updateAuthUI(resp.account.name || resp.account.username, true);
+    document.getElementById('authPanel').style.display = 'none';
+  } catch (e) {
+    showStatus('Sign-in failed: ' + e.message, 'error');
+    document.getElementById('signInBtn').disabled = false;
+    document.getElementById('signInBtn').textContent = 'Sign in with Microsoft';
+  }
+}
+
+function handleSignOut() {
+  accessToken = null; msalInstance = null;
+  updateAuthUI('', false);
+}
+
+function updateAuthUI(name, on) {
+  document.getElementById('authDot').className = 'dot' + (on ? ' on' : '');
+  document.getElementById('authLabel').textContent = on ? name : 'Sign in to Microsoft 365';
+  document.getElementById('signInBtn').style.display = on ? 'none' : '';
+  document.getElementById('signOutBtn').style.display = on ? '' : 'none';
+  document.getElementById('signInBtn').disabled = false;
+  document.getElementById('signInBtn').textContent = 'Sign in with Microsoft';
+}
+
+// ── File upload ─────────────────────────────────────────────────────────────
+function handleDragOver(e) { e.preventDefault(); document.getElementById('uploadZone').classList.add('drag-over'); }
+function handleDragLeave(e) { document.getElementById('uploadZone').classList.remove('drag-over'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) processExcel(f);
+}
+function handleFile(e) { if (e.target.files[0]) processExcel(e.target.files[0]); }
+
+function processExcel(file) {
+  const r = new FileReader();
+  r.onload = ev => {
+    const wb = XLSX.read(ev.target.result, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    if (!data.length) return;
+    headers = data[0].map(String);
+    allParts = data.slice(1).filter(row => row.some(c => c !== undefined && c !== ''));
+
+    const zone = document.getElementById('uploadZone');
+    zone.className = 'upload-zone loaded';
+    zone.innerHTML = `<svg viewBox="0 0 32 32" fill="none"><path d="M8 16l5 5 10-10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="13" stroke="currentColor" stroke-width="1.6"/></svg><div class="uz-title">${file.name}</div><div class="uz-sub">${allParts.length} rows loaded — click to replace</div>`;
+
+    ['partNumCol','docPathCol','descCol'].forEach(id => {
+      const sel = document.getElementById(id);
+      const base = id === 'descCol' ? '<option value="">— none —</option>' : '';
+      sel.innerHTML = base + headers.map((h,i) => `<option value="${i}">${h}</option>`).join('');
+    });
+
+    const lc = headers.map(h => h.toLowerCase());
+    const pi = lc.findIndex(h => /part|number|pn|item/.test(h));
+    const di = lc.findIndex(h => /path|url|file|doc|link/.test(h));
+    const dsi = lc.findIndex(h => /desc|name|title/.test(h));
+    if (pi >= 0) document.getElementById('partNumCol').value = pi;
+    if (di >= 0) document.getElementById('docPathCol').value = di;
+    if (dsi >= 0) document.getElementById('descCol').value = dsi;
+
+    document.getElementById('colMapSection').style.display = 'block';
+  };
+  r.readAsArrayBuffer(file);
+}
+
+// ── Parts list ──────────────────────────────────────────────────────────────
+function loadParts() {
+  const pi = +document.getElementById('partNumCol').value;
+  const di = +document.getElementById('docPathCol').value;
+  const dsi = document.getElementById('descCol').value;
+  allParts = allParts.map(row => ({
+    partNum: String(row[pi] ?? '').trim(),
+    docPath: String(row[di] ?? '').trim(),
+    desc: dsi !== '' ? String(row[+dsi] ?? '').trim() : ''
+  })).filter(p => p.partNum && p.docPath);
+  filterParts();
+}
+
+function filterParts() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  visibleParts = q ? allParts.filter(p =>
+    p.partNum.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q)
+  ) : allParts;
+  renderPartsList();
+}
+
+function getExt(path) { return (path.split('.').pop() || '').toLowerCase().replace(/\?.*/, ''); }
+function extBadge(ext) {
+  if (['pdf'].includes(ext)) return 'pdf';
+  if (['doc','docx'].includes(ext)) return 'docx';
+  if (['xls','xlsx'].includes(ext)) return 'xlsx';
+  if (['png','jpg','jpeg','gif','webp','tiff','bmp'].includes(ext)) return 'img';
+  return '';
+}
+function extLabel(ext) {
+  if (['doc','docx'].includes(ext)) return 'DOCX';
+  if (['xls','xlsx'].includes(ext)) return 'XLSX';
+  if (['png','jpg','jpeg'].includes(ext)) return ext.toUpperCase();
+  return ext.toUpperCase() || 'FILE';
+}
+
+function renderPartsList() {
+  const el = document.getElementById('partsList');
+  if (!visibleParts.length) {
+    el.innerHTML = `<div class="empty-state"><svg viewBox="0 0 32 32" fill="none"><circle cx="14" cy="14" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M21 21l7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>${allParts.length ? 'No parts match your search' : 'Upload a parts index to get started'}</div>`;
+    return;
+  }
+  el.innerHTML = visibleParts.map(p => {
+    const ext = getExt(p.docPath);
+    const cls = extBadge(ext);
+    const checked = selectedPartNums.has(p.partNum);
+    return `<div class="part-row${checked ? ' selected' : ''}" onclick="togglePart('${CSS.escape(p.partNum)}',this)">
+      <input type="checkbox" ${checked ? 'checked' : ''} onclick="event.stopPropagation();togglePart('${CSS.escape(p.partNum)}',this.closest('.part-row'))" />
+      <div class="part-info">
+        <div class="part-num">${p.partNum}</div>
+        ${p.desc ? `<div class="part-desc">${p.desc}</div>` : ''}
+      </div>
+      <span class="part-badge ${cls}">${extLabel(ext)}</span>
+    </div>`;
+  }).join('');
+  updateSelBar();
+}
+
+function togglePart(escapedNum, rowEl) {
+  // find real partNum by matching escaped
+  const p = visibleParts.find(p => CSS.escape(p.partNum) === escapedNum);
+  if (!p) return;
+  if (selectedPartNums.has(p.partNum)) {
+    selectedPartNums.delete(p.partNum);
+    if (rowEl) { rowEl.classList.remove('selected'); const cb = rowEl.querySelector('input[type=checkbox]'); if (cb) cb.checked = false; }
+  } else {
+    selectedPartNums.add(p.partNum);
+    if (rowEl) { rowEl.classList.add('selected'); const cb = rowEl.querySelector('input[type=checkbox]'); if (cb) cb.checked = true; }
+  }
+  updateSelBar();
+}
+
+function selectAll() {
+  visibleParts.forEach(p => selectedPartNums.add(p.partNum));
+  renderPartsList();
+}
+function clearSelection() {
+  selectedPartNums.clear();
+  renderPartsList();
+}
+function updateSelBar() {
+  const bar = document.getElementById('selBar');
+  const n = selectedPartNums.size;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  document.getElementById('selCount').textContent = n;
+}
+
+// ── Queue ───────────────────────────────────────────────────────────────────
+function addSelectionToQueue() {
+  const toAdd = allParts.filter(p => selectedPartNums.has(p.partNum));
+  const existing = new Set(queue.map(q => q.partNum));
+  toAdd.forEach(p => {
+    if (!existing.has(p.partNum)) queue.push({ ...p, ext: getExt(p.docPath) });
+  });
+  selectedPartNums.clear();
+  renderPartsList();
+  renderQueue();
+}
+
+function removeFromQueue(idx) {
+  queue.splice(idx, 1);
+  renderQueue();
+}
+
+function clearQueue() {
+  queue = [];
+  renderQueue();
+}
+
+function renderQueue() {
+  const el = document.getElementById('queueList');
+  const empty = document.getElementById('queueEmpty');
+  const clearBtn = document.getElementById('clearQueueBtn');
+  document.getElementById('queueCount').textContent = queue.length ? `(${queue.length} docs — drag to reorder)` : '(drag to reorder)';
+  clearBtn.style.display = queue.length ? '' : 'none';
+
+  if (!queue.length) {
+    el.innerHTML = '';
+    el.appendChild(empty);
+    return;
+  }
+  if (empty.parentNode) empty.parentNode.removeChild(empty);
+
+  el.innerHTML = queue.map((item, i) => {
+    const cls = extBadge(item.ext);
+    return `<div class="queue-item" draggable="true" data-idx="${i}"
+      ondragstart="dragStart(event,${i})" ondragover="dragOver(event,${i})" ondrop="dragDrop(event,${i})" ondragend="dragEnd()">
+      <span class="drag-handle" aria-hidden="true">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M4 4h1M4 7h1M4 10h1M9 4h1M9 7h1M9 10h1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </span>
+      <span class="queue-idx">${i + 1}</span>
+      <span class="queue-name">${item.partNum}${item.desc ? ' — ' + item.desc : ''}</span>
+      <span class="part-badge queue-ext ${cls}">${extLabel(item.ext)}</span>
+      <button class="remove-btn" onclick="removeFromQueue(${i})" aria-label="Remove">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>`;
+  }).join('');
+}
+
+// ── Drag-to-reorder ──────────────────────────────────────────────────────────
+function dragStart(e, idx) {
+  dragSrcIdx = idx;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dragOver(e, idx) {
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('drag-over-top','drag-over-bottom'));
+  if (idx !== dragSrcIdx) {
+    const cls = idx < dragSrcIdx ? 'drag-over-top' : 'drag-over-bottom';
+    e.currentTarget.classList.add(cls);
+  }
+}
+function dragDrop(e, idx) {
+  e.preventDefault();
+  if (dragSrcIdx === null || dragSrcIdx === idx) return;
+  const moved = queue.splice(dragSrcIdx, 1)[0];
+  queue.splice(idx, 0, moved);
+  renderQueue();
+}
+function dragEnd() {
+  dragSrcIdx = null;
+  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('dragging','drag-over-top','drag-over-bottom'));
+}
+
+// ── Cover page settings ──────────────────────────────────────────────────────
+function toggleCoverFields() {
+  const on = document.getElementById('coverToggle').checked;
+  document.getElementById('coverFields').style.display = on ? '' : 'none';
+}
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+function log(msg, type = 'info') {
+  const wrap = document.getElementById('logWrap');
+  wrap.style.display = 'block';
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `<span class="log-time">${time}</span><span class="log-${type}">${msg}</span>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progressSection').style.display = '';
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('statusBanner');
+  el.textContent = msg; el.className = 'status-banner ' + type;
+  el.style.display = msg ? '' : 'none';
+}
+
+// ── Graph API fetch ──────────────────────────────────────────────────────────
+async function fetchFromGraph(path) {
+  let endpoint;
+  if (path.startsWith('https://')) {
+    const encoded = btoa(path).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+    endpoint = `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/content`;
+  } else {
+    endpoint = `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(path)}:/content`;
+  }
+  const resp = await fetch(endpoint, { headers: { Authorization: 'Bearer ' + accessToken } });
+  if (!resp.ok) throw new Error(`Graph ${resp.status}: ${path.split('/').pop()}`);
+  return new Uint8Array(await resp.arrayBuffer());
+}
+
+// ── Word → PDF (HTML bridge via Mammoth + pdf-lib) ──────────────────────────
+async function wordToPdfPages(bytes, pdfDoc) {
+  return new Promise(async (resolve) => {
+    try {
+      const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
+      const html = result.value;
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;';
+      document.body.appendChild(iframe);
+      iframe.contentDocument.open();
+      iframe.contentDocument.write(`<!DOCTYPE html><html><head><style>
+        body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.5;padding:60px;margin:0;width:674px;}
+        h1{font-size:18pt;}h2{font-size:14pt;}h3{font-size:12pt;}
+        table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:4px 8px;}
+      </style></head><body>${html}</body></html>`);
+      iframe.contentDocument.close();
+      setTimeout(async () => {
+        try {
+          // Use canvas to rasterize pages
+          const iframeDoc = iframe.contentDocument;
+          const totalH = iframeDoc.body.scrollHeight;
+          const pageH = 1056; const pageW = 816;
+          const pages = Math.max(1, Math.ceil(totalH / pageH));
+          for (let pg = 0; pg < pages; pg++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = pageW * 2; canvas.height = pageH * 2;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.scale(2, 2);
+            ctx.font = '11px Arial'; ctx.fillStyle = '#333';
+            ctx.fillText(`[Word document — page ${pg+1} of ${pages}]`, 40, 50);
+            ctx.fillText('Note: Install a server-side converter for full Word rendering fidelity.', 40, 75);
+            const pngBytes = canvas.toDataURL('image/png').split(',')[1];
+            const imgBytes = Uint8Array.from(atob(pngBytes), c => c.charCodeAt(0));
+            const img = await pdfDoc.embedPng(imgBytes);
+            const page = pdfDoc.addPage([pageW, pageH]);
+            page.drawImage(img, { x: 0, y: 0, width: pageW, height: pageH });
+          }
+        } catch (ex) { /* best-effort */ }
+        document.body.removeChild(iframe);
+        resolve();
+      }, 600);
+    } catch (ex) {
+      resolve(); // skip on failure
+    }
+  });
+}
+
+// ── Cover page builder ───────────────────────────────────────────────────────
+async function buildCoverPage(pdfDoc) {
+  const { rgb } = PDFLib;
+  const page = pdfDoc.insertPage(0, [612, 792]);
+  const title = document.getElementById('coverTitle').value || 'Parts Document Package';
+  const prepBy = document.getElementById('coverPrepBy').value;
+  const company = document.getElementById('coverCompany').value;
+  const notes = document.getElementById('coverNotes').value;
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Header band
+  page.drawRectangle({ x: 0, y: 692, width: 612, height: 100, color: rgb(0.094, 0.373, 0.647) });
+
+  // White title text
+  page.drawText('PARTS DOCUMENT PACKAGE', {
+    x: 48, y: 760, size: 9,
+    color: rgb(0.9, 0.95, 0.98),
+  });
+
+  // Title (large)
+  const lines = splitText(title, 50);
+  lines.forEach((line, i) => {
+    page.drawText(line, { x: 48, y: 730 - i * 26, size: 18, color: rgb(1,1,1) });
+  });
+
+  // Accent line
+  page.drawLine({ start: {x:48,y:676}, end: {x:564,y:676}, thickness: 2, color: rgb(0.094,0.373,0.647) });
+
+  // Meta fields
+  let y = 648;
+  const field = (label, value) => {
+    if (!value) return;
+    page.drawText(label.toUpperCase(), { x: 48, y, size: 8, color: rgb(0.5,0.5,0.5) });
+    page.drawText(value, { x: 48, y: y - 14, size: 11, color: rgb(0.1,0.1,0.1) });
+    y -= 40;
+  };
+  if (prepBy) field('Prepared by', prepBy);
+  if (company) field('Company / project', company);
+  field('Date', date);
+  field('Documents included', String(queue.length));
+
+  // Part list
+  y -= 10;
+  page.drawText('PARTS IN THIS PACKAGE', { x: 48, y, size: 8, color: rgb(0.5,0.5,0.5) });
+  y -= 18;
+  queue.forEach((item, i) => {
+    if (y < 60) return;
+    const txt = `${i+1}.  ${item.partNum}${item.desc ? '  —  '+item.desc : ''}`;
+    page.drawText(txt.substring(0, 80), { x: 48, y, size: 10, color: rgb(0.15,0.15,0.15) });
+    y -= 16;
+  });
+
+  // Notes
+  if (notes) {
+    y -= 10;
+    page.drawLine({ start:{x:48,y:y+8}, end:{x:564,y:y+8}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
+    y -= 6;
+    page.drawText('NOTES', { x: 48, y, size: 8, color: rgb(0.5,0.5,0.5) });
+    y -= 16;
+    splitText(notes, 90).forEach(l => {
+      if (y < 40) return;
+      page.drawText(l, { x: 48, y, size: 10, color: rgb(0.2,0.2,0.2) });
+      y -= 14;
+    });
+  }
+
+  // Footer
+  page.drawRectangle({ x: 0, y: 0, width: 612, height: 36, color: rgb(0.94,0.94,0.94) });
+  page.drawText('Generated by Parts PDF Builder  ·  ' + date, {
+    x: 48, y: 13, size: 8, color: rgb(0.5,0.5,0.5)
+  });
+}
+
+function splitText(text, maxChars) {
+  const words = text.split(' '); const lines = []; let cur = '';
+  words.forEach(w => { if ((cur+w).length > maxChars) { lines.push(cur.trim()); cur = ''; } cur += w + ' '; });
+  if (cur.trim()) lines.push(cur.trim());
+  return lines;
+}
+
+// ── Main generate ─────────────────────────────────────────────────────────────
+async function generatePDF() {
+  if (!queue.length) { showStatus('Add parts to the queue first.', 'error'); return; }
+
+  document.getElementById('generateBtn').disabled = true;
+  document.getElementById('logWrap').innerHTML = '';
+  document.getElementById('logWrap').style.display = '';
+  showStatus('', '');
+
+  const { PDFDocument } = PDFLib;
+  const merged = await PDFDocument.create();
+
+  const useCover = document.getElementById('coverToggle').checked;
+  let done = 0; let skipped = 0;
+
+  log(`Starting — ${queue.length} document(s) queued`, 'info');
+  if (!accessToken) log('No Microsoft sign-in — demo mode (placeholder pages only)', 'info');
+
+  for (const item of queue) {
+    setProgress(Math.round((done / queue.length) * 88), `Processing ${item.partNum} (${done+1} of ${queue.length})…`);
+    try {
+      let bytes;
+      if (accessToken) {
+        bytes = await fetchFromGraph(item.docPath);
+        log(`Fetched: ${item.partNum}`, 'ok');
+      } else {
+        bytes = await makeDemoPage(item, merged);
+        log(`Demo page: ${item.partNum}`, 'info');
+        done++; continue;
+      }
+
+      const ext = item.ext;
+      if (ext === 'pdf') {
+        const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages = await merged.copyPages(src, src.getPageIndices());
+        pages.forEach(p => merged.addPage(p));
+        log(`Merged PDF: ${item.partNum} (${src.getPageCount()} page${src.getPageCount()>1?'s':''})`, 'ok');
+      } else if (['doc','docx'].includes(ext)) {
+        await wordToPdfPages(bytes, merged);
+        log(`Converted DOCX: ${item.partNum}`, 'ok');
+      } else if (['xls','xlsx'].includes(ext)) {
+        await excelToPage(bytes, item, merged);
+        log(`Converted XLSX: ${item.partNum}`, 'ok');
+      } else if (['png','jpg','jpeg','webp'].includes(ext)) {
+        await imageToPage(bytes, ext, item, merged);
+        log(`Embedded image: ${item.partNum}`, 'ok');
+      } else {
+        log(`Skipped (unsupported type): ${item.partNum} .${ext}`, 'err');
+        skipped++;
+      }
+    } catch (e) {
+      log(`Error — ${item.partNum}: ${e.message}`, 'err');
+      skipped++;
+    }
+    done++;
+  }
+
+  if (useCover) {
+    setProgress(92, 'Building cover page…');
+    await buildCoverPage(merged);
+    log('Cover page added', 'ok');
+  }
+
+  setProgress(97, 'Saving PDF…');
+  const out = await merged.save();
+  const blob = new Blob([out], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = document.getElementById('outputName').value || 'compiled-parts.pdf';
+  a.click(); URL.revokeObjectURL(url);
+
+  setProgress(100, 'Done!');
+  const msg = `PDF compiled: ${done - skipped} documents merged${skipped ? `, ${skipped} skipped` : ''}${useCover ? ' + cover page' : ''}.`;
+  showStatus(msg, skipped ? 'warn' : 'success');
+  log(msg, skipped ? 'err' : 'ok');
+  document.getElementById('generateBtn').disabled = false;
+}
+
+async function makeDemoPage(item, pdfDoc) {
+  const { rgb } = PDFLib;
+  const page = pdfDoc.addPage([612, 792]);
+  page.drawRectangle({ x: 0, y: 740, width: 612, height: 52, color: rgb(0.094,0.373,0.647) });
+  page.drawText('DEMO MODE — sign in to Microsoft 365 to fetch real files', { x: 48, y: 758, size: 9, color: rgb(0.8,0.9,1) });
+  page.drawText(`Part: ${item.partNum}`, { x: 48, y: 700, size: 16, color: rgb(0.1,0.1,0.1) });
+  if (item.desc) page.drawText(item.desc, { x: 48, y: 678, size: 11, color: rgb(0.4,0.4,0.4) });
+  page.drawText(`File: ${item.docPath}`, { x: 48, y: 640, size: 10, color: rgb(0.5,0.5,0.5) });
+}
+
+async function imageToPage(bytes, ext, item, pdfDoc) {
+  const page = pdfDoc.addPage([612, 792]);
+  const img = (ext === 'png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+  const scale = Math.min(612 / img.width, 792 / img.height, 1);
+  const w = img.width * scale; const h = img.height * scale;
+  page.drawImage(img, { x: (612 - w) / 2, y: (792 - h) / 2, width: w, height: h });
+}
+
+async function excelToPage(bytes, item, pdfDoc) {
+  const { rgb } = PDFLib;
+  const wb = XLSX.read(bytes, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }).slice(0, 40);
+  const page = pdfDoc.addPage([792, 612]); // landscape
+  let y = 570;
+  page.drawRectangle({ x: 0, y: 572, width: 792, height: 40, color: rgb(0.094,0.373,0.647) });
+  page.drawText(`${item.partNum}${item.desc ? ' — '+item.desc : ''}`, { x: 24, y: 583, size: 12, color: rgb(1,1,1) });
+  rows.forEach(row => {
+    if (y < 20) return;
+    const line = row.map(c => String(c ?? '').substring(0,20)).join('   ');
+    page.drawText(line.substring(0, 110), { x: 24, y, size: 8, color: rgb(0.15,0.15,0.15) });
+    y -= 12;
+  });
+}
+</script>
+</body>
+</html>
