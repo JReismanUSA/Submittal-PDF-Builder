@@ -395,22 +395,25 @@
 
       <div id="colMapSection" style="display:none; margin-top: 12px;">
         <div style="font-size: 12px; color: var(--text-2); margin-bottom: 8px; font-weight: 500;">Map columns from your sheet:</div>
-        <div class="col-map">
-          <div class="field-group">
-            <label class="field-label">Part number</label>
-            <select id="partNumCol"></select>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="col-map">
+            <div class="field-group">
+              <label class="field-label">Part number</label>
+              <select id="partNumCol"></select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Filename</label>
+              <select id="filenameCol"></select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Description (optional)</label>
+              <select id="descCol"><option value="">— none —</option></select>
+            </div>
           </div>
-          <div class="field-group">
-            <label class="field-label">Filename</label>
-            <select id="filenameCol"></select>
-          </div>
-          <div class="field-group">
-            <label class="field-label">Description (optional)</label>
-            <select id="descCol"><option value="">— none —</option></select>
-          </div>
-          <div class="field-group" style="justify-content: flex-end;">
-            <button class="btn btn-primary" onclick="loadParts()">Apply mapping</button>
-          </div>
+          <button class="btn btn-primary btn-full" onclick="loadParts()">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M8 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Load parts into search
+          </button>
         </div>
       </div>
     </div>
