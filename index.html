@@ -925,15 +925,28 @@ async function fetchFromGraph(path) {
 // ── Word → PDF via Microsoft Graph convert endpoint ─────────────────────────
 // Asks Microsoft's servers to do the conversion — perfect fidelity, handles
 // both .doc and .docx, no browser-side rendering limitations.
+// Strategy: resolve the driveItem's drive+item IDs from the sharing link first,
+// then call the /content?format=pdf endpoint on the resolved item —
+// this is the only route Graph supports for format conversion.
 async function fetchWordAsPdf(docPath) {
-  let endpoint;
+  let contentEndpoint;
   if (docPath.startsWith('https://')) {
+    // Step 1: resolve sharing URL → driveItem metadata (gets us parentReference)
     const encoded = btoa(docPath).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-    endpoint = `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/content?format=pdf`;
+    const metaResp = await fetch(
+      `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem?$select=id,parentReference`,
+      { headers: { Authorization: 'Bearer ' + accessToken } }
+    );
+    if (!metaResp.ok) throw new Error(`Graph resolve ${metaResp.status}: ${docPath.split('/').pop()}`);
+    const meta = await metaResp.json();
+    const driveId = meta.parentReference.driveId;
+    const itemId  = meta.id;
+    // Step 2: convert via resolved drive/item path — this endpoint supports ?format=pdf
+    contentEndpoint = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content?format=pdf`;
   } else {
-    endpoint = `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(docPath)}:/content?format=pdf`;
+    contentEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(docPath)}:/content?format=pdf`;
   }
-  const resp = await fetch(endpoint, { headers: { Authorization: 'Bearer ' + accessToken } });
+  const resp = await fetch(contentEndpoint, { headers: { Authorization: 'Bearer ' + accessToken } });
   if (!resp.ok) throw new Error(`Graph convert ${resp.status}: ${docPath.split('/').pop()}`);
   return new Uint8Array(await resp.arrayBuffer());
 }
@@ -1133,7 +1146,9 @@ async function generatePDF() {
         pages.forEach(p => merged.addPage(p));
         log(`Merged PDF: ${item.partNum} (${src.getPageCount()} page${src.getPageCount()>1?'s':''})`, 'ok');
       } else if (['doc','docx'].includes(ext)) {
-        // Use Graph API to convert Word → PDF server-side (full fidelity)
+        // Word files: skip the raw bytes already fetched and use the Graph
+        // convert endpoint instead — requires resolving driveItem ID first.
+        log(`Converting ${ext.toUpperCase()} via Graph API: ${item.partNum}…`, 'info');
         const pdfBytes = await fetchWordAsPdf(item.docPath);
         const src = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const pages = await merged.copyPages(src, src.getPageIndices());
