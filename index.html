@@ -621,12 +621,15 @@ async function handleSignIn() {
       resp = await msalInstance.loginPopup({ scopes: MSAL_CONFIG.scopes });
     }
     accessToken = resp.accessToken;
-    currentUserName = resp.account.name || resp.account.username || '';
+    // Prefer account.name (display name) over username (UPN/email)
+    currentUserName = (resp.account.name && resp.account.name.trim())
+      ? resp.account.name.trim()
+      : (resp.account.username || '');
     updateAuthUI(currentUserName, true);
     document.getElementById('authPanel').style.display = 'none';
-    // Pre-fill cover page prepared-by with signed-in user's display name
+    // Always fill Prepared By with the signed-in display name
     const prepByField = document.getElementById('coverPrepBy');
-    if (prepByField && !prepByField.value) prepByField.value = currentUserName;
+    if (prepByField) prepByField.value = currentUserName;
   } catch (e) {
     showStatus('Sign-in failed: ' + e.message, 'error');
     document.getElementById('signInBtn').disabled = false;
@@ -1058,16 +1061,10 @@ async function buildCoverPage(pdfDoc) {
   // Header band
   page.drawRectangle({ x: 0, y: 692, width: 612, height: 100, color: rgb(0.094, 0.373, 0.647) });
 
-  // White title text
-  page.drawText('PRODUCT DATASHEET PACKAGE', {
-    x: 48, y: 760, size: 9,
-    color: rgb(0.9, 0.95, 0.98),
-  });
-
-  // Title (large)
+  // Title (large) — centred vertically in the header band
   const lines = splitText(title, 50);
   lines.forEach((line, i) => {
-    page.drawText(line, { x: 48, y: 730 - i * 26, size: 18, color: rgb(1,1,1) });
+    page.drawText(line, { x: 48, y: 748 - i * 26, size: 20, color: rgb(1,1,1) });
   });
 
   // Accent line
