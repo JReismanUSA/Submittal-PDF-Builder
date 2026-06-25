@@ -791,7 +791,7 @@ function addSelectionToQueue() {
     if (existing.has(p.partNum)) return;
     const indexed = p.filename ? fileIndex.get(p.filename.toLowerCase()) : null;
     if (indexed) {
-      queue.push({ ...p, docPath: indexed.url, ext: getExt(indexed.url) });
+      queue.push({ ...p, docPath: indexed.url, driveId: indexed.driveId, itemId: indexed.itemId, ext: getExt(p.filename) });
     } else {
       // No file found in index — add with empty path so it shows as unresolved
       queue.push({ ...p, docPath: '', ext: '' });
@@ -909,18 +909,22 @@ function showStatus(msg, type) {
 }
 
 // ── Graph API fetch ──────────────────────────────────────────────────────────
-async function fetchFromGraph(path) {
-  // Strip SharePoint web viewer query params (e.g. &action=default&mobileredirect=true)
-  path = path.split('?')[0].split('&action=')[0];
+async function fetchFromGraph(path, driveId, itemId) {
   let endpoint;
-  if (path.startsWith('https://')) {
-    const encoded = btoa(path).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-    endpoint = `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/content`;
+  if (driveId && itemId) {
+    // Prefer direct drive/item endpoint — avoids viewer URL issues
+    endpoint = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content`;
   } else {
-    endpoint = `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(path)}:/content`;
+    path = path.split('?')[0].split('&action=')[0];
+    if (path.startsWith('https://')) {
+      const encoded = btoa(path).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+      endpoint = `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/content`;
+    } else {
+      endpoint = `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(path)}:/content`;
+    }
   }
   const resp = await fetch(endpoint, { headers: { Authorization: 'Bearer ' + accessToken } });
-  if (!resp.ok) throw new Error(`Graph ${resp.status}: ${path.split('/').pop()}`);
+  if (!resp.ok) throw new Error(`Graph ${resp.status}: ${path ? path.split('/').pop() : itemId}`);
   return new Uint8Array(await resp.arrayBuffer());
 }
 
@@ -930,29 +934,27 @@ async function fetchFromGraph(path) {
 // Strategy: resolve the driveItem's drive+item IDs from the sharing link first,
 // then call the /content?format=pdf endpoint on the resolved item —
 // this is the only route Graph supports for format conversion.
-async function fetchWordAsPdf(docPath) {
-  // Strip SharePoint web viewer query params
-  docPath = docPath.split('?')[0].split('&action=')[0];
-  let driveId, itemId;
-  if (docPath.startsWith('https://')) {
-    // Encode the URL as a sharing token regardless of whether it's a /:w:/ short
-    // link or a full /sites/... path — Graph resolves both via /shares/u!{token}
-    const encoded = btoa(docPath).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-    // Fetch full driveItem metadata including parentReference for driveId
-    const metaResp = await fetch(
-      `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem?$select=id,name,parentReference`,
-      { headers: { Authorization: 'Bearer ' + accessToken } }
-    );
-    if (!metaResp.ok) {
-      const errText = await metaResp.text();
-      throw new Error(`Graph resolve ${metaResp.status}: ${errText.substring(0,120)}`);
+async function fetchWordAsPdf(docPath, driveId, itemId) {
+  // If we already have driveId+itemId from the scan, use them directly
+  if (!driveId || !itemId) {
+    // Fall back: resolve via sharing link
+    docPath = docPath.split('?')[0].split('&action=')[0];
+    if (docPath.startsWith('https://')) {
+      const encoded = btoa(docPath).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+      const metaResp = await fetch(
+        `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem?$select=id,name,parentReference`,
+        { headers: { Authorization: 'Bearer ' + accessToken } }
+      );
+      if (!metaResp.ok) {
+        const errText = await metaResp.text();
+        throw new Error(`Graph resolve ${metaResp.status}: ${errText.substring(0,120)}`);
+      }
+      const meta = await metaResp.json();
+      driveId = meta.parentReference && meta.parentReference.driveId;
+      itemId  = meta.id;
+      if (!driveId || !itemId) throw new Error(`Could not resolve driveItem for: ${docPath.split('/').pop()}`);
     }
-    const meta = await metaResp.json();
-    driveId = meta.parentReference && meta.parentReference.driveId;
-    itemId  = meta.id;
-    if (!driveId || !itemId) throw new Error(`Could not resolve driveItem for: ${docPath.split('/').pop()}`);
   }
-  // Build convert endpoint using resolved IDs (only route Graph supports for ?format=pdf)
   const convertEndpoint = driveId
     ? `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content?format=pdf`
     : `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(docPath)}:/content?format=pdf`;
@@ -977,7 +979,7 @@ async function graphGet(url) {
 function sharePointUrlToDriveItemChildren(folderUrl) {
   // Convert a SharePoint web URL to a Graph API children endpoint
   const encoded = btoa(folderUrl).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-  return `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/children?$select=name,file,folder,webUrl,lastModifiedDateTime,parentReference&$top=500`;
+  return `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/children?$select=id,name,file,folder,webUrl,lastModifiedDateTime,parentReference&$top=500`;
 }
 
 async function scanFolderRecursive(folderUrl, statusEl, depth) {
@@ -988,15 +990,21 @@ async function scanFolderRecursive(folderUrl, statusEl, depth) {
     const items = data.value || [];
     for (const item of items) {
       if (item.file) {
-        // It's a file — add to index, keeping newest if duplicate name
+        // Store driveId + itemId directly — avoids webUrl viewer page issues
         const key = item.name.toLowerCase();
         const existing = fileIndex.get(key);
         const modified = new Date(item.lastModifiedDateTime).getTime();
         if (!existing || modified > existing.lastModified) {
-          fileIndex.set(key, { url: item.webUrl, lastModified: modified });
+          const driveId = item.parentReference && item.parentReference.driveId;
+          fileIndex.set(key, {
+            driveId,
+            itemId: item.id,
+            url: item.webUrl,   // kept for display/fallback only
+            lastModified: modified
+          });
         }
       } else if (item.folder) {
-        // It's a subfolder — recurse into it
+        // Recurse into subfolder using its webUrl
         await scanFolderRecursive(item.webUrl, statusEl, depth + 1);
       }
     }
@@ -1144,7 +1152,7 @@ async function generatePDF() {
           log(`Skipped (not found in folder scan): ${item.partNum}`, 'err');
           skipped++; done++; continue;
         }
-        bytes = await fetchFromGraph(item.docPath);
+        bytes = await fetchFromGraph(item.docPath, item.driveId, item.itemId);
         log(`Fetched: ${item.partNum}`, 'ok');
       } else {
         bytes = await makeDemoPage(item, merged);
@@ -1162,7 +1170,7 @@ async function generatePDF() {
         // Word files: skip the raw bytes already fetched and use the Graph
         // convert endpoint instead — requires resolving driveItem ID first.
         log(`Converting ${ext.toUpperCase()} via Graph API: ${item.partNum}…`, 'info');
-        const pdfBytes = await fetchWordAsPdf(item.docPath);
+        const pdfBytes = await fetchWordAsPdf(item.docPath, item.driveId, item.itemId);
         const src = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const pages = await merged.copyPages(src, src.getPageIndices());
         pages.forEach(p => merged.addPage(p));
