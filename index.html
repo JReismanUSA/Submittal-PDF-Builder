@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Parts PDF Builder</title>
+<title>Submittal Builder - Recursive</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -338,7 +338,7 @@
       <path d="M8 20V10l4 3 3-5 3 5 4-3v10H8z" fill="none" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
       <path d="M8 20h12" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
     </svg>
-    Parts PDF Builder
+    Submittal Builder — Recursive
   </a>
   <div id="authPill" class="auth-pill" onclick="handleAuthPill()">
     <span class="dot" id="authDot"></span>
@@ -357,7 +357,25 @@
     <button id="signInBtn" style="display:none" onclick="handleSignIn()"></button>
     <button id="signOutBtn" style="display:none" onclick="handleSignOut()"></button>
 
-    <!-- Step 1: Excel upload -->
+    <!-- Step 1: Source folder -->
+    <div class="card">
+      <div class="card-title">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.586a1 1 0 01.707.293L8.414 4.5A1 1 0 019.121 4.793L9 5H13a1 1 0 011 1v6a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        Source folder
+      </div>
+      <div class="field-group">
+        <label class="field-label">SharePoint parent folder URL</label>
+        <input type="text" id="folderUrl" placeholder="https://company.sharepoint.com/sites/…" />
+        <p class="field-hint">The app will search this folder and all subfolders recursively for matching filenames.</p>
+      </div>
+      <button class="btn btn-primary btn-full" id="scanBtn" onclick="scanFolder()" style="margin-top:6px;">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Scan folder
+      </button>
+      <div id="scanStatus" style="display:none; margin-top:8px; font-size:12px; color:var(--text-2);"></div>
+    </div>
+
+    <!-- Step 2: Parts list upload -->
     <div class="card">
       <div class="card-title">
         <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 5h6M5 8h6M5 11h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -383,8 +401,8 @@
             <select id="partNumCol"></select>
           </div>
           <div class="field-group">
-            <label class="field-label">Document path / URL</label>
-            <select id="docPathCol"></select>
+            <label class="field-label">Filename</label>
+            <select id="filenameCol"></select>
           </div>
           <div class="field-group">
             <label class="field-label">Description (optional)</label>
@@ -537,6 +555,8 @@
   if (el) el.value = `Submittal_${dt}.pdf`;
 })();
 let allParts = [];
+let fileIndex = new Map(); // filename.toLowerCase() → {url, lastModified}
+let folderScanned = false;
 let visibleParts = [];
 let selectedPartNums = new Set();
 let queue = []; // [{partNum, docPath, desc, ext}]
@@ -652,18 +672,17 @@ function processExcel(file) {
     zone.className = 'upload-zone loaded';
     zone.innerHTML = `<svg viewBox="0 0 32 32" fill="none"><path d="M8 16l5 5 10-10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="13" stroke="currentColor" stroke-width="1.6"/></svg><div class="uz-title">${file.name}</div><div class="uz-sub">${allParts.length} rows loaded — click to replace</div>`;
 
-    ['partNumCol','docPathCol','descCol'].forEach(id => {
+    ['partNumCol','filenameCol','descCol'].forEach(id => {
       const sel = document.getElementById(id);
       const base = id === 'descCol' ? '<option value="">— none —</option>' : '';
       sel.innerHTML = base + headers.map((h,i) => `<option value="${i}">${h}</option>`).join('');
     });
 
     const lc = headers.map(h => h.toLowerCase());
-    const pi = lc.findIndex(h => /part|number|pn|item/.test(h));
-    const di = lc.findIndex(h => /path|url|file|doc|link/.test(h));
+    const pi = lc.findIndex(h => /part|number|pn|item|filename|file.?name/.test(h));
     const dsi = lc.findIndex(h => /desc|name|title/.test(h));
-    if (pi >= 0) document.getElementById('partNumCol').value = pi;
-    if (di >= 0) document.getElementById('docPathCol').value = di;
+    if (pi  >= 0) document.getElementById('partNumCol').value = pi;
+    if (fi  >= 0) document.getElementById('filenameCol').value = fi;
     if (dsi >= 0) document.getElementById('descCol').value = dsi;
 
     document.getElementById('colMapSection').style.display = 'block';
@@ -673,14 +692,15 @@ function processExcel(file) {
 
 // ── Parts list ──────────────────────────────────────────────────────────────
 function loadParts() {
-  const pi = +document.getElementById('partNumCol').value;
-  const di = +document.getElementById('docPathCol').value;
+  const pi  = +document.getElementById('partNumCol').value;
+  const fi  = +document.getElementById('filenameCol').value;
   const dsi = document.getElementById('descCol').value;
   allParts = allParts.map(row => ({
-    partNum: String(row[pi] ?? '').trim(),
-    docPath: String(row[di] ?? '').trim(),
-    desc: dsi !== '' ? String(row[+dsi] ?? '').trim() : ''
-  })).filter(p => p.partNum && p.docPath);
+    partNum:  String(row[pi]  ?? '').trim(),
+    filename: String(row[fi]  ?? '').trim(),
+    docPath:  '',
+    desc:     dsi !== '' ? String(row[+dsi] ?? '').trim() : ''
+  })).filter(p => p.partNum && p.filename);
   filterParts();
 }
 
@@ -714,7 +734,8 @@ function renderPartsList() {
     return;
   }
   el.innerHTML = visibleParts.map(p => {
-    const ext = getExt(p.docPath);
+    const indexed = p.filename ? fileIndex.get(p.filename.toLowerCase()) : null;
+    const ext = indexed ? getExt(indexed.url) : (p.filename ? getExt(p.filename) : '');
     const cls = extBadge(ext);
     const checked = selectedPartNums.has(p.partNum);
     return `<div class="part-row${checked ? ' selected' : ''}" onclick="togglePart('${CSS.escape(p.partNum)}',this)">
@@ -762,9 +783,21 @@ function updateSelBar() {
 function addSelectionToQueue() {
   const toAdd = allParts.filter(p => selectedPartNums.has(p.partNum));
   const existing = new Set(queue.map(q => q.partNum));
+  let unresolved = 0;
   toAdd.forEach(p => {
-    if (!existing.has(p.partNum)) queue.push({ ...p, ext: getExt(p.docPath) });
+    if (existing.has(p.partNum)) return;
+    const indexed = p.filename ? fileIndex.get(p.filename.toLowerCase()) : null;
+    if (indexed) {
+      queue.push({ ...p, docPath: indexed.url, ext: getExt(indexed.url) });
+    } else {
+      // No file found in index — add with empty path so it shows as unresolved
+      queue.push({ ...p, docPath: '', ext: '' });
+      unresolved++;
+    }
   });
+  if (unresolved > 0) {
+    showStatus(`${unresolved} item(s) not found in the scanned folder. Scan the folder first, or check filenames.`, 'warn');
+  }
   selectedPartNums.clear();
   renderPartsList();
   renderQueue();
@@ -803,7 +836,7 @@ function renderQueue() {
       </span>
       <span class="queue-idx">${i + 1}</span>
       <span class="queue-name">${item.partNum}${item.desc ? ' — ' + item.desc : ''}</span>
-      <span class="part-badge queue-ext ${cls}">${extLabel(item.ext)}</span>
+      <span class="part-badge queue-ext ${cls}">${item.docPath ? extLabel(item.ext) : '<span style=\'color:var(--red)\'>NOT FOUND</span>'}</span>
       <button class="remove-btn" onclick="removeFromQueue(${i})" aria-label="Remove">
         <svg viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </button>
@@ -902,6 +935,79 @@ async function fetchWordAsPdf(docPath) {
   return new Uint8Array(await resp.arrayBuffer());
 }
 
+// ── Recursive folder scanner ─────────────────────────────────────────────────
+// Crawls a SharePoint folder tree via Graph API, building a map of
+// filename → {url, lastModified}. When duplicates exist, keeps newest.
+
+async function graphGet(url) {
+  const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
+  if (!resp.ok) throw new Error(`Graph ${resp.status}: ${url}`);
+  return resp.json();
+}
+
+function sharePointUrlToDriveItemChildren(folderUrl) {
+  // Convert a SharePoint web URL to a Graph API children endpoint
+  const encoded = btoa(folderUrl).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  return `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem/children?$select=name,file,folder,webUrl,lastModifiedDateTime,parentReference&$top=500`;
+}
+
+async function scanFolderRecursive(folderUrl, statusEl, depth) {
+  if (depth > 10) return; // safety cap — avoid infinite loops on deep trees
+  let nextLink = sharePointUrlToDriveItemChildren(folderUrl);
+  while (nextLink) {
+    const data = await graphGet(nextLink);
+    const items = data.value || [];
+    for (const item of items) {
+      if (item.file) {
+        // It's a file — add to index, keeping newest if duplicate name
+        const key = item.name.toLowerCase();
+        const existing = fileIndex.get(key);
+        const modified = new Date(item.lastModifiedDateTime).getTime();
+        if (!existing || modified > existing.lastModified) {
+          fileIndex.set(key, { url: item.webUrl, lastModified: modified });
+        }
+      } else if (item.folder) {
+        // It's a subfolder — recurse into it
+        await scanFolderRecursive(item.webUrl, statusEl, depth + 1);
+      }
+    }
+    // Handle pagination
+    nextLink = data['@odata.nextLink'] || null;
+    if (statusEl) statusEl.textContent = `Scanning… ${fileIndex.size} files found so far`;
+  }
+}
+
+async function scanFolder() {
+  const folderUrl = document.getElementById('folderUrl').value.trim();
+  if (!folderUrl) { showStatus('Enter a SharePoint folder URL first.', 'error'); return; }
+  if (!accessToken) { showStatus('Sign in to Microsoft 365 first.', 'error'); return; }
+
+  const scanBtn = document.getElementById('scanBtn');
+  const statusEl = document.getElementById('scanStatus');
+  scanBtn.disabled = true;
+  scanBtn.textContent = 'Scanning…';
+  statusEl.style.display = '';
+  statusEl.textContent = 'Starting scan…';
+  fileIndex.clear();
+  folderScanned = false;
+
+  try {
+    await scanFolderRecursive(folderUrl, statusEl, 0);
+    folderScanned = true;
+    statusEl.textContent = `✓ Scan complete — ${fileIndex.size} files indexed across all subfolders.`;
+    statusEl.style.color = 'var(--green)';
+    // Re-render parts list so ext badges update
+    if (allParts.length) renderPartsList();
+    log(`Folder scan complete: ${fileIndex.size} files indexed`, 'ok');
+  } catch (e) {
+    statusEl.textContent = `Scan failed: ${e.message}`;
+    statusEl.style.color = 'var(--red)';
+    log(`Folder scan error: ${e.message}`, 'err');
+  }
+  scanBtn.disabled = false;
+  scanBtn.textContent = 'Scan folder';
+}
+
 // ── Cover page builder ───────────────────────────────────────────────────────
 async function buildCoverPage(pdfDoc) {
   const { rgb } = PDFLib;
@@ -970,7 +1076,7 @@ async function buildCoverPage(pdfDoc) {
 
   // Footer
   page.drawRectangle({ x: 0, y: 0, width: 612, height: 36, color: rgb(0.94,0.94,0.94) });
-  page.drawText('Generated by Parts PDF Builder  ·  ' + date, {
+  page.drawText('Generated by Submittal Builder — Recursive  ·  ' + date, {
     x: 48, y: 13, size: 8, color: rgb(0.5,0.5,0.5)
   });
 }
@@ -1005,6 +1111,10 @@ async function generatePDF() {
     try {
       let bytes;
       if (accessToken) {
+        if (!item.docPath) {
+          log(`Skipped (not found in folder scan): ${item.partNum}`, 'err');
+          skipped++; done++; continue;
+        }
         bytes = await fetchFromGraph(item.docPath);
         log(`Fetched: ${item.partNum}`, 'ok');
       } else {
