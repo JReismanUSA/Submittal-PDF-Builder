@@ -933,25 +933,34 @@ async function fetchFromGraph(path) {
 async function fetchWordAsPdf(docPath) {
   // Strip SharePoint web viewer query params
   docPath = docPath.split('?')[0].split('&action=')[0];
-  let contentEndpoint;
+  let driveId, itemId;
   if (docPath.startsWith('https://')) {
-    // Step 1: resolve sharing URL → driveItem metadata (gets us parentReference)
+    // Encode the URL as a sharing token regardless of whether it's a /:w:/ short
+    // link or a full /sites/... path — Graph resolves both via /shares/u!{token}
     const encoded = btoa(docPath).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+    // Fetch full driveItem metadata including parentReference for driveId
     const metaResp = await fetch(
-      `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem?$select=id,parentReference`,
+      `https://graph.microsoft.com/v1.0/shares/u!${encoded}/driveItem?$select=id,name,parentReference`,
       { headers: { Authorization: 'Bearer ' + accessToken } }
     );
-    if (!metaResp.ok) throw new Error(`Graph resolve ${metaResp.status}: ${docPath.split('/').pop()}`);
+    if (!metaResp.ok) {
+      const errText = await metaResp.text();
+      throw new Error(`Graph resolve ${metaResp.status}: ${errText.substring(0,120)}`);
+    }
     const meta = await metaResp.json();
-    const driveId = meta.parentReference.driveId;
-    const itemId  = meta.id;
-    // Step 2: convert via resolved drive/item path — this endpoint supports ?format=pdf
-    contentEndpoint = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content?format=pdf`;
-  } else {
-    contentEndpoint = `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(docPath)}:/content?format=pdf`;
+    driveId = meta.parentReference && meta.parentReference.driveId;
+    itemId  = meta.id;
+    if (!driveId || !itemId) throw new Error(`Could not resolve driveItem for: ${docPath.split('/').pop()}`);
   }
-  const resp = await fetch(contentEndpoint, { headers: { Authorization: 'Bearer ' + accessToken } });
-  if (!resp.ok) throw new Error(`Graph convert ${resp.status}: ${docPath.split('/').pop()}`);
+  // Build convert endpoint using resolved IDs (only route Graph supports for ?format=pdf)
+  const convertEndpoint = driveId
+    ? `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content?format=pdf`
+    : `https://graph.microsoft.com/v1.0/me/drive/root:${encodeURIComponent(docPath)}:/content?format=pdf`;
+  const resp = await fetch(convertEndpoint, { headers: { Authorization: 'Bearer ' + accessToken } });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Graph convert ${resp.status}: ${errText.substring(0,120)}`);
+  }
   return new Uint8Array(await resp.arrayBuffer());
 }
 
