@@ -715,7 +715,7 @@ function filterParts() {
   renderPartsList();
 }
 
-function getExt(path) { return (path.split('.').pop() || '').toLowerCase().replace(/\?.*/, ''); }
+function getExt(path) { return (path.split('.').pop() || '').toLowerCase().replace(/[?&].*/, ''); }
 function extBadge(ext) {
   if (['pdf'].includes(ext)) return 'pdf';
   if (['doc','docx'].includes(ext)) return 'docx';
@@ -910,6 +910,8 @@ function showStatus(msg, type) {
 
 // ── Graph API fetch ──────────────────────────────────────────────────────────
 async function fetchFromGraph(path) {
+  // Strip SharePoint web viewer query params (e.g. &action=default&mobileredirect=true)
+  path = path.split('?')[0].split('&action=')[0];
   let endpoint;
   if (path.startsWith('https://')) {
     const encoded = btoa(path).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
@@ -929,6 +931,8 @@ async function fetchFromGraph(path) {
 // then call the /content?format=pdf endpoint on the resolved item —
 // this is the only route Graph supports for format conversion.
 async function fetchWordAsPdf(docPath) {
+  // Strip SharePoint web viewer query params
+  docPath = docPath.split('?')[0].split('&action=')[0];
   let contentEndpoint;
   if (docPath.startsWith('https://')) {
     // Step 1: resolve sharing URL → driveItem metadata (gets us parentReference)
