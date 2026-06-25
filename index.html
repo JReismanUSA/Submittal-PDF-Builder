@@ -621,10 +621,24 @@ async function handleSignIn() {
       resp = await msalInstance.loginPopup({ scopes: MSAL_CONFIG.scopes });
     }
     accessToken = resp.accessToken;
-    // Prefer account.name (display name) over username (UPN/email)
-    currentUserName = (resp.account.name && resp.account.name.trim())
-      ? resp.account.name.trim()
-      : (resp.account.username || '');
+    // Try ID token claims first (most reliable source of display name)
+    const claims = resp.idTokenClaims || (resp.account && resp.account.idTokenClaims) || {};
+    currentUserName = (claims.name && claims.name.trim())
+      ? claims.name.trim()
+      : (resp.account && resp.account.name && resp.account.name.trim())
+        ? resp.account.name.trim()
+        : (resp.account && resp.account.username) || '';
+    // If still empty, fetch display name from Graph /me
+    if (!currentUserName) {
+      try {
+        const meResp = await fetch('https://graph.microsoft.com/v1.0/me?$select=displayName',
+          { headers: { Authorization: 'Bearer ' + accessToken } });
+        if (meResp.ok) {
+          const me = await meResp.json();
+          currentUserName = me.displayName || '';
+        }
+      } catch (_) {}
+    }
     updateAuthUI(currentUserName, true);
     document.getElementById('authPanel').style.display = 'none';
     // Always fill Prepared By with the signed-in display name
