@@ -680,7 +680,8 @@ function processExcel(file) {
     });
 
     const lc = headers.map(h => h.toLowerCase());
-    const pi = lc.findIndex(h => /part|number|pn|item|filename|file.?name/.test(h));
+    const pi  = lc.findIndex(h => /part|number|pn|item/.test(h));
+    const fi  = lc.findIndex(h => /file|filename|path|doc/.test(h));
     const dsi = lc.findIndex(h => /desc|name|title/.test(h));
     if (pi  >= 0) document.getElementById('partNumCol').value = pi;
     if (fi  >= 0) document.getElementById('filenameCol').value = fi;
